@@ -2,6 +2,7 @@ import React from 'react';
 import { Palette } from 'lucide-react';
 import type { NodeData } from '../types/poker';
 import type { SettingsData } from '../contexts/DataContext';
+import { formatBB as formatBBUtil, isActionAllIn } from '../utils/poker-utils';
 
 interface DynamicLegendProps {
   nodeData: NodeData;
@@ -10,16 +11,19 @@ interface DynamicLegendProps {
 
 const DynamicLegend: React.FC<DynamicLegendProps> = ({ nodeData, settings }) => {
   const formatBB = (amount: number) => {
-    const bb = amount / settings.blinds.bb;
-    return bb % 1 === 0 ? `${bb}BB` : `${bb.toFixed(1)}BB`;
+    return formatBBUtil(amount, settings.blinds.bb);
   };
 
   const getRaiseColor = (actionIndex: number) => {
     const action = nodeData.actions?.[actionIndex];
     if (!action || (action.type !== 'R' && action.type !== 'A')) return '#94a3b8';
     
-    // Use the pre-calculated isAllIn flag
-    if (action.isAllIn) {
+    // Calculate if this is an all-in based on player stack
+    const playerIndex = nodeData.player;
+    const actionAmount = action.amount;
+    const isAllIn = isActionAllIn(actionAmount, playerIndex, settings, nodeData.sequence);
+    
+    if (isAllIn) {
       return '#e1bee1'; // Purple for all-in
     }
     
@@ -71,7 +75,13 @@ const DynamicLegend: React.FC<DynamicLegendProps> = ({ nodeData, settings }) => 
                 case 'R':
                 case 'A':
                   const bbAmount = action.amount / (settings?.blinds?.bb || 100000);
-                  if (action.isAllIn) {
+                  
+                  // Calculate if this is an all-in based on player stack
+                  const playerIndex = nodeData.player;
+                  const actionAmount = action.amount;
+                  const isAllIn = isActionAllIn(actionAmount, playerIndex, settings, nodeData.sequence);
+                  
+                  if (isAllIn) {
                     actionKey = `allin-${action.amount}`;
                     color = '#e1bee1';
                     actionType = 'allin';
@@ -88,7 +98,6 @@ const DynamicLegend: React.FC<DynamicLegendProps> = ({ nodeData, settings }) => 
                     actionIndex: index
                   };
                   return;
-                  break;
               }
               
               if (actionKey) {

@@ -4,42 +4,6 @@ import type { CompactTreeNode, CompactAction, OptimizedTree } from '../types/opt
 import { CompactTreeNavigator } from '../utils/compact-tree-navigator';
 import type { SettingsData } from '../contexts/DataContext';
 
-// Color utility function to get highlight colors for taken actions
-const getActionHighlightColor = (action: CompactAction, settings: SettingsData): { backgroundColor: string; textColor: string } => {
-  switch (action.t) {
-    case 'F':
-      return { backgroundColor: '#cbd5e1', textColor: 'black' }; // Light grey for fold (slate-300)
-    case 'C':
-    case 'X':
-      return { backgroundColor: '#bee1be', textColor: 'black' }; // Green for call/check
-    case 'R':
-    case 'A':
-      // TODO: Re-implement all-in detection based on stack calculations
-      // For now, treat all raises the same way
-      
-      const bbAmount = (action.amt || 0) / settings.blinds.bb;
-      
-      // Gradient from light red (#ffa4a4) at 2BB to a medium red (#ff6666) at 20BB+
-      if (bbAmount <= 2) return { backgroundColor: '#ffa4a4', textColor: 'black' }; // Light red
-      if (bbAmount >= 20) return { backgroundColor: '#ff6666', textColor: 'black' }; // Medium red
-      
-      // Calculate gradient between the two colors
-      const ratio = (bbAmount - 2) / (20 - 2);
-      const r1 = 255, g1 = 164, b1 = 164; // #ffa4a4
-      const r2 = 255, g2 = 102, b2 = 102; // #ff6666
-      
-      const r = Math.round(r1 + (r2 - r1) * ratio);
-      const g = Math.round(g1 + (g2 - g1) * ratio);
-      const b = Math.round(b1 + (b2 - b1) * ratio);
-      
-      // Determine text color based on brightness
-      const brightness = (r * 299 + g * 587 + b * 114) / 1000;
-      return { backgroundColor: `rgb(${r}, ${g}, ${b})`, textColor: 'black' }; // Always black text
-    default:
-      return { backgroundColor: '#94a3b8', textColor: 'white' }; // Default grey
-  }
-};
-
 interface TopNavigationProps {
   navigationPath: CompactTreeNode[];
   currentNodeId: string;
@@ -77,14 +41,14 @@ const TopNavigation: React.FC<TopNavigationProps> = ({
     return ['SB', 'BB'];
   };
 
-  const calculatePlayerStackAtNode = (treeNode: CompactTreeNode): number => {
+  // Calculate player's absolute stack value at a specific node
+  const calculatePlayerStackAbsolute = React.useCallback((treeNode: CompactTreeNode): number => {
     const playerIndex = treeNode.pl;
     const initialStacks = settings?.stacks || [4000000, 4000000];
     let currentStack = initialStacks[playerIndex] || 4000000;
     const sb = settings?.blinds?.sb || 0;
     const bb = settings?.blinds?.bb || 0;
     const ante = settings?.blinds?.ante || 0;
-    const bbValue = settings?.blinds?.bb || 100000;
     
     // Subtract blinds and antes for initial setup
     const positions = getPositionNames(settings?.playerCount || 2);
@@ -97,8 +61,7 @@ const TopNavigation: React.FC<TopNavigationProps> = ({
     // Use the navigationPath to reconstruct the sequence of actions
     const nodeIndex = navigationPath.findIndex(node => node.id === treeNode.id);
     if (nodeIndex === -1) {
-      if (bbValue <= 0) return 0;
-      return Math.round(currentStack / bbValue);
+      return currentStack;
     }
     
     // Process actions from the navigation path up to this node
@@ -109,16 +72,68 @@ const TopNavigation: React.FC<TopNavigationProps> = ({
       if (parentPathNode && parentPathNode.pl === playerIndex) {
         // Find the action that led from parent to current node
         const actionToChild = parentPathNode.a.find(action => action.n === currentPathNode.id);
-        if (actionToChild && (actionToChild.t === 'C' || actionToChild.t === 'R')) {
+        if (actionToChild && (actionToChild.t === 'C' || actionToChild.t === 'R' || actionToChild.t === 'A')) {
           const actionAmount = actionToChild.amt || 0;
           currentStack -= actionAmount;
         }
       }
     }
     
+    return currentStack;
+  }, [navigationPath, settings]);
+
+  // Calculate player's stack in BB at a specific node
+  const calculatePlayerStackAtNodeInBB = React.useCallback((treeNode: CompactTreeNode): number => {
+    const absoluteStack = calculatePlayerStackAbsolute(treeNode);
+    const bbValue = settings?.blinds?.bb || 100000;
+    
     if (bbValue <= 0) return 0;
-    return Math.round(currentStack / bbValue);
-  };
+    return Math.round(absoluteStack / bbValue);
+  }, [calculatePlayerStackAbsolute, settings]);
+
+  // Color utility function to get highlight colors for taken actions
+  const getActionHighlightColor = React.useCallback((
+    action: CompactAction, 
+    node: CompactTreeNode
+  ): { backgroundColor: string; textColor: string } => {
+    switch (action.t) {
+      case 'F':
+        return { backgroundColor: '#cbd5e1', textColor: 'black' }; // Light grey for fold (slate-300)
+      case 'C':
+      case 'X':
+        return { backgroundColor: '#bee1be', textColor: 'black' }; // Green for call/check
+      case 'R':
+      case 'A':
+        // Check if this is an all-in by comparing action amount with player's stack
+        const playerStackAbsolute = calculatePlayerStackAbsolute(node);
+        const actionAmount = action.amt || 0;
+        
+        // If action amount >= player's stack, it's an all-in
+        if (actionAmount >= playerStackAbsolute) {
+          return { backgroundColor: '#e1bee1', textColor: 'black' }; // Purple for all-in
+        }
+        
+        // Regular raise - use red gradient based on BB amount
+        const bbAmount = actionAmount / settings.blinds.bb;
+        
+        // Gradient from light red (#ffa4a4) at 2BB to a medium red (#ff6666) at 20BB+
+        if (bbAmount <= 2) return { backgroundColor: '#ffa4a4', textColor: 'black' }; // Light red
+        if (bbAmount >= 20) return { backgroundColor: '#ff6666', textColor: 'black' }; // Medium red
+        
+        // Calculate gradient between the two colors
+        const ratio = (bbAmount - 2) / (20 - 2);
+        const r1 = 255, g1 = 164, b1 = 164; // #ffa4a4
+        const r2 = 255, g2 = 102, b2 = 102; // #ff6666
+        
+        const r = Math.round(r1 + (r2 - r1) * ratio);
+        const g = Math.round(g1 + (g2 - g1) * ratio);
+        const b = Math.round(b1 + (b2 - b1) * ratio);
+        
+        return { backgroundColor: `rgb(${r}, ${g}, ${b})`, textColor: 'black' };
+      default:
+        return { backgroundColor: '#94a3b8', textColor: 'white' }; // Default grey
+    }
+  }, [calculatePlayerStackAbsolute, settings]);
 
   const getAvailableActionsForNode = (nodeId: string) => {
     const navigator = new CompactTreeNavigator(optimizedTree!);
@@ -284,7 +299,7 @@ const TopNavigation: React.FC<TopNavigationProps> = ({
       <div className="flex items-start gap-1 overflow-x-auto scrollbar-thin scrollbar-track-slate-800 scrollbar-thumb-slate-600 pb-2">
         {navigationPath.map((node: any, pathIndex) => {
           const isCurrentNode = node.id === currentNodeId;
-          const stackBB = calculatePlayerStackAtNode(node);
+          const stackBB = calculatePlayerStackAtNodeInBB(node);
           const availableActions = getAvailableActionsForNode(node.id);
           const positions = getPositionNames(settings.playerCount);
           const playerPosition = positions[node.pl] || `P${node.pl}`;
@@ -324,7 +339,7 @@ const TopNavigation: React.FC<TopNavigationProps> = ({
                     const isActionTaken = nextNodeInPath && actionData.targetNodeId === nextNodeInPath.id;
                     
                     // Get highlight colors if action was taken
-                    const highlightColors = isActionTaken ? getActionHighlightColor(actionData.action, settings) : null;
+                    const highlightColors = isActionTaken ? getActionHighlightColor(actionData.action, node) : null;
                     
                     return (
                       <button

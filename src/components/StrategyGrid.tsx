@@ -1,6 +1,7 @@
 import React from 'react';
 import type { NodeData } from '../types/poker';
 import type { SettingsData } from '../contexts/DataContext';
+import { formatBB as formatBBUtil, isActionAllIn } from '../utils/poker-utils';
 
 interface StrategyGridProps {
   nodeData: NodeData;
@@ -49,8 +50,7 @@ const StrategyGrid: React.FC<StrategyGridProps> = ({ nodeData, equity, settings 
   };
 
   const formatBB = (amount: number) => {
-    const bb = amount / settings.blinds.bb;
-    return bb % 1 === 0 ? `${bb}BB` : `${bb.toFixed(1)}BB`;
+    return formatBBUtil(amount, settings.blinds.bb);
   };
 
   const getHandData = React.useCallback((hand: string) => {
@@ -62,8 +62,12 @@ const StrategyGrid: React.FC<StrategyGridProps> = ({ nodeData, equity, settings 
     const action = nodeData.actions?.[actionIndex];
     if (!action || (action.type !== 'R' && action.type !== 'A')) return '#94a3b8';
     
-    // Use pre-calculated isAllIn flag
-    if (action.isAllIn) {
+    // Calculate if this is an all-in based on player stack
+    const playerIndex = nodeData.player;
+    const actionAmount = action.amount;
+    const isAllIn = isActionAllIn(actionAmount, playerIndex, settings, nodeData.sequence);
+    
+    if (isAllIn) {
       return '#e1bee1'; // Purple for all-in
     }
     
@@ -144,8 +148,13 @@ const StrategyGrid: React.FC<StrategyGridProps> = ({ nodeData, equity, settings 
             break;
           case 'R':
           case 'A':
+            // Calculate if this is an all-in based on player stack
+            const playerIndex = nodeData.player;
+            const actionAmount = action.amount;
+            const isAllIn = isActionAllIn(actionAmount, playerIndex, settings, nodeData.sequence);
+            
             color = getRaiseColor(realIndex);
-            actionType = action.isAllIn ? 'allin' : 'raise';
+            actionType = isAllIn ? 'allin' : 'raise';
             break;
           default:
             color = '#94a3b8'; // Grey for unknown
@@ -170,7 +179,7 @@ const StrategyGrid: React.FC<StrategyGridProps> = ({ nodeData, equity, settings 
       absoluteActionFrequencies,
       totalNonFoldActivePercentage
     };
-  }, [getHandData, nodeData, getRaiseColor]);
+  }, [getHandData, nodeData, getRaiseColor, settings]);
 
   // Calculate if we should apply thick borders (when >30% of cells have 0%)
   const shouldApplyThickBorder = React.useMemo(() => {

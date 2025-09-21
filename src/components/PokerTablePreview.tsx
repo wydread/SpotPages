@@ -2,6 +2,7 @@ import React from 'react';
 import type { NodeData } from '../types/poker';
 import type { SettingsData } from '../contexts/DataContext';
 import type { OptimizedTree, CompactTreeNode } from '../types/optimized-tree';
+import { getPositionNames, formatBB as formatBBUtil } from '../utils/poker-utils';
 
 interface PokerTablePreviewProps {
   settings: SettingsData;
@@ -20,26 +21,8 @@ const PokerTablePreview: React.FC<PokerTablePreviewProps> = ({ settings, current
     navigationPathLength: navigationPath?.length
   });
   
-  const getPositionNames = (playerCount: number): string[] => {
-    if (playerCount === 2) return ['SB', 'BB'];
-    if (playerCount === 3) return ['BU', 'SB', 'BB'];
-    if (playerCount === 4) return ['CO', 'BU', 'SB', 'BB'];
-    if (playerCount === 5) return ['HJ', 'CO', 'BU', 'SB', 'BB'];
-    if (playerCount === 6) return ['MP', 'HJ', 'CO', 'BU', 'SB', 'BB'];
-    if (playerCount === 7) return ['UTG', 'MP', 'HJ', 'CO', 'BU', 'SB', 'BB'];
-    if (playerCount === 8) return ['UTG', 'UTG+1', 'MP', 'HJ', 'CO', 'BU', 'SB', 'BB'];
-    if (playerCount === 9) return ['UTG', 'UTG+1', 'UTG+2', 'MP', 'HJ', 'CO', 'BU', 'SB', 'BB'];
-    return ['SB', 'BB'];
-  };
-
   const formatBB = (amount: number) => {
-    const bbValue = settings?.blinds?.bb;
-    if (!bbValue || bbValue <= 0) {
-      console.warn('🏓 PokerTablePreview - Invalid BB value:', bbValue);
-      return 'N/A BB';
-    }
-    const bb = amount / bbValue;
-    return bb % 1 === 0 ? `${bb}BB` : `${bb.toFixed(1)}BB`;
+    return formatBBUtil(amount, settings?.blinds?.bb || 0);
   };
 
   const formatActionLabel = (actionType: string, amount: number): string => {
